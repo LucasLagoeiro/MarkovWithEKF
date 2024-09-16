@@ -130,7 +130,7 @@ class R2D2(Node):
         rclpy.spin_once(self)
 
         self.get_logger().debug ('Definindo mensagens de controde do robô.')
-        self.ir_para_frente = Twist(linear=Vector3(x= 0.5,y=0.0,z=0.0),angular=Vector3(x=0.0,y=0.0,z= 0.0))
+        self.ir_para_frente = Twist(linear=Vector3(x= 0.7,y=0.0,z=0.0),angular=Vector3(x=0.0,y=0.0,z= 0.0))
         self.parar          = Twist(linear=Vector3(x= 0.0,y=0.0,z=0.0),angular=Vector3(x=0.0,y=0.0,z= 0.0))
 
         self.get_logger().info ('Ordenando o robô: "ir para a frente"')
@@ -187,14 +187,12 @@ class R2D2(Node):
                 self.pose_robot[0] = self.media_nova # a nova posição x do robô
                 self.sigma_movimento = self.sigma_novo # novo erro gaussiano do robô
 
-                for i in range(len(self.x)): self.ax.plot(self.x, self.y2, color="r")
-                self.y2[i] = self.gaussian(self.x[i], self.mapa[self.porta], self.sigma_lidar)
+                for i in range(len(self.x)): self.y2[i] = self.gaussian(self.x[i], self.mapa[self.porta], self.sigma_lidar)
+                self.ax.plot(self.x, self.y2, color="r")
                 plt.pause(0.1) # plota em vermelho “r” a gaussiana da leitura do laser com relação à porta
                 time.sleep(3)
 
-
                 for i in range(len(self.x)): self.y3[i] = self.gaussian(self.x[i], self.media_nova, self.sigma_novo)
-                
                 self.ax.plot(self.x, self.y3, color="g")
                 plt.pause(0.1) # plota em verde “g” a gaussiana nova após interpolação das duas gaussianas.
                 time.sleep(3)
@@ -203,7 +201,7 @@ class R2D2(Node):
                 if self.porta == 0: self.porta = 1 # altera para a próxima porta 0 → 1 ; 1 → 2
                 elif self.porta == 1: self.porta = 2
 
-                time.sleep(1)
+                time.sleep(4)
 
             self.count += 1
 
