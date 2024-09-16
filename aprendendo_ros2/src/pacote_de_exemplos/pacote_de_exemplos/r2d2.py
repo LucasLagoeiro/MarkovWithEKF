@@ -15,6 +15,8 @@ import numpy as np
 from numpy import random
 from math import *
 import matplotlib.pyplot as plt
+import time 
+
 
 class R2D2(Node):
 
@@ -32,7 +34,7 @@ class R2D2(Node):
 
         # mapa
         self.estado_inicial = 0
-        self.mapa = [1.5,4.5] # posição central das três “portas” existentes
+        self.mapa = [1.5,4.5,7.5] # posição central das três “portas” existentes
         self.pose_robot[0] = self.estado_inicial # atualiza como estado_inicial a posição x d
 
         # possiveis erros
@@ -46,6 +48,12 @@ class R2D2(Node):
         self.y2 = np.zeros(500)
         self.y3 = np.zeros(500)
         self.fig, self.ax = plt.subplots()
+
+        self.controle = 0
+        self.count = 0
+        self.porta = 0
+
+
 
 
         qos_profile = QoSProfile(depth=10, reliability = QoSReliabilityPolicy.BEST_EFFORT)
@@ -122,7 +130,7 @@ class R2D2(Node):
         rclpy.spin_once(self)
 
         self.get_logger().debug ('Definindo mensagens de controde do robô.')
-        self.ir_para_frente = Twist(linear=Vector3(x= 0.2,y=0.0,z=0.0),angular=Vector3(x=0.0,y=0.0,z= 0.0))
+        self.ir_para_frente = Twist(linear=Vector3(x= 0.5,y=0.0,z=0.0),angular=Vector3(x=0.0,y=0.0,z= 0.0))
         self.parar          = Twist(linear=Vector3(x= 0.0,y=0.0,z=0.0),angular=Vector3(x=0.0,y=0.0,z= 0.0))
 
         self.get_logger().info ('Ordenando o robô: "ir para a frente"')
@@ -132,9 +140,7 @@ class R2D2(Node):
         # self.left_encoder = self.right_yaw
         # self.right_encoder = self.left_yaw
 
-        self.controle = 0
-        self.count = 0
-        self.porta = 0
+
 
 
         self.get_logger().info ('Entrando no loop princial do nó.')
@@ -157,7 +163,7 @@ class R2D2(Node):
                 continue  # Pule esta iteração se os valores de yaw não estiverem disponíveis
 
             if self.count % 4 == 0: # a cada 4 passos, plotar em preto “b” a gaussiana da posição do robô em x (pose[0])
-                self.get_logger().info ('Vou plotar.')
+                # self.get_logger().info ('Vou plotar.')
                 for i in range(len(self.x)):
                     self.y[i] = self.gaussian(self.x[i], self.pose_robot[0], self.sigma_movimento)
                 self.ax.clear()
@@ -170,9 +176,9 @@ class R2D2(Node):
 
             self.sigma_movimento = self.sigma_movimento + 0.002 # se movimento reto, aumenta a incerteza da posição em 0.002
 
-
-            if self.distancia_esquerda == inf and self.distancia_direita == inf: # se a leitura indicar em frente a uma porta
-                
+            self.get_logger().debug('Valores dos lasers: ' + 'E: ' + str(self.distancia_esquerda) + 'D: ' + str(self.distancia_direita))
+            if self.distancia_esquerda > 1.6 and self.distancia_direita > 1.6: # se a leitura indicar em frente a uma porta
+                self.get_logger().info ('Achei uma porta!.')
                 self.pub_cmd_vel.publish(self.parar)
 
                 self.media_nova = (self.mapa[self.porta]*self.sigma_movimento + self.pose_robot[0]*self.sigma_lidar) / (self.sigma_movimento+self.sigma_lidar)
@@ -181,19 +187,25 @@ class R2D2(Node):
                 self.pose_robot[0] = self.media_nova # a nova posição x do robô
                 self.sigma_movimento = self.sigma_novo # novo erro gaussiano do robô
 
-                for i in range(len(self.x)): 
-                    self.y2[i] = self.gaussian(self.x[i], self.mapa[self.porta], self.sigma_lidar)
-                    self.ax.plot(self.x, self.y2, color="r")
-                    plt.pause(0.1) # plota em vermelho “r” a gaussiana da leitura do laser com relação à porta
+                for i in range(len(self.x)): self.ax.plot(self.x, self.y2, color="r")
+                self.y2[i] = self.gaussian(self.x[i], self.mapa[self.porta], self.sigma_lidar)
+                plt.pause(0.1) # plota em vermelho “r” a gaussiana da leitura do laser com relação à porta
+                time.sleep(3)
 
-                    for i in range(len(self.x)): 
-                        self.y3[i] = self.gaussian(self.x[i], self.media_nova, self.sigma_novo)
-                        self.ax.plot(self.x, self.y3, color="g")
-                        plt.pause(0.1) # plota em verde “g” a gaussiana nova após interpolação das duas gaussianas.
-                        self.pub_cmd_vel.publish(self.ir_para_frente)
-                        if self.porta == 0: self.porta = 1 # altera para a próxima porta 0 → 1 ; 1 → 2
-                        elif self.porta == 1: self.porta = 2
-                cont += 1
+
+                for i in range(len(self.x)): self.y3[i] = self.gaussian(self.x[i], self.media_nova, self.sigma_novo)
+                
+                self.ax.plot(self.x, self.y3, color="g")
+                plt.pause(0.1) # plota em verde “g” a gaussiana nova após interpolação das duas gaussianas.
+                time.sleep(3)
+                
+                self.pub_cmd_vel.publish(self.ir_para_frente)
+                if self.porta == 0: self.porta = 1 # altera para a próxima porta 0 → 1 ; 1 → 2
+                elif self.porta == 1: self.porta = 2
+
+                time.sleep(1)
+
+            self.count += 1
 
 
             self.get_logger().debug ("Distância para o obstáculo" + str(self.distancia_frente))
@@ -231,6 +243,8 @@ class R2D2(Node):
         self.pose_robot[0] = self.pose_robot[0] + self.deltaSx # atualiza x
         self.pose_robot[1] = self.pose_robot[1] + self.deltaSy # atualiza y
         print("Postura:", self.pose_robot)
+
+        
 
     # Destrutor do nó
     def __del__(self):

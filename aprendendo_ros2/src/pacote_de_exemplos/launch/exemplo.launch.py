@@ -14,9 +14,9 @@ def generate_launch_description():
         ),
 
         Node(
-            name='no_simples',
+            name='r2d2',
             package='pacote_de_exemplos',
-            executable='no_simples',
+            executable='r2d2',
             arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
         ),
     ])
