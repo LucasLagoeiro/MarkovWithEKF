@@ -1,9 +1,10 @@
 import rclpy
 from rclpy.node import Node
 
-from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import LaserScan, JointState
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist, Vector3
+
 
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy
 
@@ -53,6 +54,8 @@ class R2D2(Node):
         self.count = 0
         self.porta = 0
 
+        self.imStillInDoor = False
+
 
 
 
@@ -61,6 +64,10 @@ class R2D2(Node):
         self.get_logger().debug ('Definindo o subscriber do laser: "/scan"')
         self.laser = None
         self.create_subscription(LaserScan, '/scan', self.listener_callback_laser, qos_profile)
+
+        self.get_logger().debug ('Definindo o subscriber do laser: "/joint_states"')
+        self.jointStateName = None
+        self.create_subscription(JointState, '/joint_states', self.listener_callback_jointState, qos_profile)
 
         self.get_logger().debug ('Definindo o subscriber do laser: "/odom"')
         self.pose = None
@@ -78,6 +85,9 @@ class R2D2(Node):
 
     def listener_callback_laser(self, msg):
         self.laser = msg.ranges
+    
+    def listener_callback_jointState(self, msg):
+        self.jointStateName = msg.name
        
     def listener_callback_odom(self, msg):
         self.pose = msg.pose.pose
@@ -130,7 +140,7 @@ class R2D2(Node):
         rclpy.spin_once(self)
 
         self.get_logger().debug ('Definindo mensagens de controde do robô.')
-        self.ir_para_frente = Twist(linear=Vector3(x= 0.7,y=0.0,z=0.0),angular=Vector3(x=0.0,y=0.0,z= 0.0))
+        self.ir_para_frente = Twist(linear=Vector3(x= 0.2,y=0.0,z=0.0),angular=Vector3(x=0.0,y=0.0,z= 0.0))
         self.parar          = Twist(linear=Vector3(x= 0.0,y=0.0,z=0.0),angular=Vector3(x=0.0,y=0.0,z= 0.0))
 
         self.get_logger().info ('Ordenando o robô: "ir para a frente"')
@@ -157,15 +167,14 @@ class R2D2(Node):
             if self.right_yaw is not None and self.left_yaw is not None:
                 self.right_encoder = self.right_yaw
                 self.left_encoder = self.left_yaw
-                self.get_logger().info ("Valores dos encoders: " + " E: " + str(self.left_encoder) + " D: " + str(self.right_encoder) )
+                # self.get_logger().info ("Valores dos encoders: " + " E: " + str(self.left_encoder) + " D: " + str(self.right_encoder) )
             else:
                 self.get_logger().info('Yaw não está disponivel ainda, pulando a atualização dos valores dos encoders.')
                 continue  # Pule esta iteração se os valores de yaw não estiverem disponíveis
 
             if self.count % 4 == 0: # a cada 4 passos, plotar em preto “b” a gaussiana da posição do robô em x (pose[0])
-                # self.get_logger().info ('Vou plotar.')
-                for i in range(len(self.x)):
-                    self.y[i] = self.gaussian(self.x[i], self.pose_robot[0], self.sigma_movimento)
+                self.get_logger().info ('Vou plotar a gaussiana azul.')
+                for i in range(len(self.x)): self.y[i] = self.gaussian(self.x[i], self.pose_robot[0], self.sigma_movimento)
                 self.ax.clear()
                 self.ax.set_ylim([0, 4])
                 self.ax.plot(self.x, self.y, color="b") 
@@ -176,8 +185,8 @@ class R2D2(Node):
 
             self.sigma_movimento = self.sigma_movimento + 0.002 # se movimento reto, aumenta a incerteza da posição em 0.002
 
-            self.get_logger().debug('Valores dos lasers: ' + 'E: ' + str(self.distancia_esquerda) + 'D: ' + str(self.distancia_direita))
-            if self.distancia_esquerda > 1.6 and self.distancia_direita > 1.6: # se a leitura indicar em frente a uma porta
+            self.get_logger().info('Valores dos lasers: ' + 'E: ' + str(self.distancia_esquerda) + 'D: ' + str(self.distancia_direita))
+            if self.distancia_esquerda > 1.6 and self.distancia_direita > 1.6 and self.distancia_frente > 1.5 and self.porta < 2 and self.imStillInDoor == False: # se a leitura indicar em frente a uma porta
                 self.get_logger().info ('Achei uma porta!.')
                 self.pub_cmd_vel.publish(self.parar)
 
@@ -190,20 +199,27 @@ class R2D2(Node):
                 for i in range(len(self.x)): self.y2[i] = self.gaussian(self.x[i], self.mapa[self.porta], self.sigma_lidar)
                 self.ax.plot(self.x, self.y2, color="r")
                 plt.pause(0.1) # plota em vermelho “r” a gaussiana da leitura do laser com relação à porta
-                time.sleep(3)
+                time.sleep(1)
 
                 for i in range(len(self.x)): self.y3[i] = self.gaussian(self.x[i], self.media_nova, self.sigma_novo)
                 self.ax.plot(self.x, self.y3, color="g")
                 plt.pause(0.1) # plota em verde “g” a gaussiana nova após interpolação das duas gaussianas.
-                time.sleep(3)
+                time.sleep(1)
                 
                 self.pub_cmd_vel.publish(self.ir_para_frente)
+                rclpy.spin_once(self)
                 if self.porta == 0: self.porta = 1 # altera para a próxima porta 0 → 1 ; 1 → 2
                 elif self.porta == 1: self.porta = 2
 
-                time.sleep(4)
+                self.imStillInDoor = True
+
+            if self.distancia_esquerda < 1.6 and self.distancia_direita < 1.6: self.imStillInDoor = False
+                
+
+
 
             self.count += 1
+            self.get_logger().info("Contador: " + str(self.count))
 
 
             self.get_logger().debug ("Distância para o obstáculo" + str(self.distancia_frente))
