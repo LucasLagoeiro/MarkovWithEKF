@@ -35,7 +35,7 @@ class R2D2(Node):
 
         # mapa
         self.estado_inicial = 0
-        self.mapa = [1.5,4.5,7.5] # posição central das três “portas” existentes
+        self.mapa = [0.33,1.33,7.5] # posição central das três “portas” existentes
         self.pose_robot[0] = self.estado_inicial # atualiza como estado_inicial a posição x d
 
         # possiveis erros
@@ -66,7 +66,8 @@ class R2D2(Node):
         self.create_subscription(LaserScan, '/scan', self.listener_callback_laser, qos_profile)
 
         self.get_logger().debug ('Definindo o subscriber do laser: "/joint_states"')
-        self.jointStateName = None
+        self.right_yaw = None
+        self.left_yaw = None
         self.create_subscription(JointState, '/joint_states', self.listener_callback_jointState, qos_profile)
 
         self.get_logger().debug ('Definindo o subscriber do laser: "/odom"')
@@ -79,18 +80,45 @@ class R2D2(Node):
         self.get_logger().info ('Definindo buffer, listener e on_timertimer para acessar as TFs.')
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
-        self.right_yaw = None
-        self.left_yaw = None
-        self.timer = self.create_timer(0.1, self.on_timer)
+
+        # self.timer = self.create_timer(0.1, self.listener_callback_jointState)
 
     def listener_callback_laser(self, msg):
-        self.laser = msg.ranges
+        if min(msg.ranges[50:70]) is not None or min(msg.ranges[ 0:10]) is not None or min(msg.ranges[170:190]) is not None:
+            self.laser = msg.ranges
+            self.get_logger().info ('LaserLeft: ' + str(min(self.laser[50:70])) + " LaserFront: " + str(min(self.laser[0:10])) + "LaserRight: " + str(min(self.laser[170:190])))
+
     
     def listener_callback_jointState(self, msg):
-        self.jointStateName = msg.name
+        # # The state of each joint (revolute or prismatic) is defined by:
+		#  * the position of the joint (rad or m),
+		#  * the velocity of the joint (rad/s or m/s) and 
+		#  * the effort that is applied in the joint (Nm or N).
+        
+        # self.data_joint_vec = [msg.position[::],msg.velocity[::],msg.effort[::]]
+        self.get_logger().info("Valores dos encoders: " + str(msg.position[0]) + str(msg.position[1]))
+
+
+        self.left_yaw = msg.position[0]
+        self.right_yaw = msg.position[1]
+
+
+        # left_wheel_index = msg.name.index('left_wheel_link')
+        # right_wheel_index = msg.name.index('right_wheel_link')
+        
+        # left_wheel_position = msg.position[left_wheel_index]
+        # right_wheel_position = msg.position[right_wheel_index]
+        
+        # self.get_logger().info("Left Wheel Position: {:.15f} Right Wheel Position: {:.15f}".format(left_wheel_position, right_wheel_position))
+        # self.get_logger().info("Left Wheel Position: {:.15f} Right Wheel Position: {:.15f}".format(left_wheel_position, right_wheel_position))
+        
+		
        
     def listener_callback_odom(self, msg):
         self.pose = msg.pose.pose
+
+		
+
 
     def on_timer(self):
         try:
@@ -140,15 +168,15 @@ class R2D2(Node):
         rclpy.spin_once(self)
 
         self.get_logger().debug ('Definindo mensagens de controde do robô.')
-        self.ir_para_frente = Twist(linear=Vector3(x= 0.2,y=0.0,z=0.0),angular=Vector3(x=0.0,y=0.0,z= 0.0))
+        self.ir_para_frente = Twist(linear=Vector3(x= 0.05,y=0.0,z=0.0),angular=Vector3(x=0.0,y=0.0,z= 0.0))
         self.parar          = Twist(linear=Vector3(x= 0.0,y=0.0,z=0.0),angular=Vector3(x=0.0,y=0.0,z= 0.0))
 
         self.get_logger().info ('Ordenando o robô: "ir para a frente"')
         self.pub_cmd_vel.publish(self.ir_para_frente)
         rclpy.spin_once(self)
 
-        # self.left_encoder = self.right_yaw
-        # self.right_encoder = self.left_yaw
+        self.left_encoder = self.left_yaw
+        self.right_encoder = self.right_yaw
 
 
 
@@ -156,11 +184,14 @@ class R2D2(Node):
         self.get_logger().info ('Entrando no loop princial do nó.')
         while(rclpy.ok):
             rclpy.spin_once(self)
-
-            self.get_logger().info ('Atualizando as distancias lidas pelo laser.')
-            self.distancia_direita   = min((self.laser[  0: 80])) # -90 a -10 graus
-            self.distancia_frente    = min((self.laser[ 80:100])) # -10 a  10 graus
-            self.distancia_esquerda  = min((self.laser[100:180])) #  10 a  90 graus
+            
+            if self.laser[50:70] is not None or self.laser[ 0:10] is not None or self.laser[170:190] is not None:
+                self.get_logger().info ('Atualizando as distancias lidas pelo laser.')
+                self.distancia_direita   = min((self.laser[ 50:70])) # -90 a -10 graus
+                self.distancia_frente    = min((self.laser[ 0:10])) # -10 a  10 graus
+                self.distancia_esquerda  = min((self.laser[170:190])) #  10 a  90 graus
+            else:
+                pass
 
             self.get_logger().info ('Atualizando os encoders.')
             # Verifique se os valores de yaw foram definidos
@@ -171,11 +202,11 @@ class R2D2(Node):
             else:
                 self.get_logger().info('Yaw não está disponivel ainda, pulando a atualização dos valores dos encoders.')
                 continue  # Pule esta iteração se os valores de yaw não estiverem disponíveis
-
             if self.count % 4 == 0: # a cada 4 passos, plotar em preto “b” a gaussiana da posição do robô em x (pose[0])
                 self.get_logger().info ('Vou plotar a gaussiana azul.')
                 for i in range(len(self.x)): self.y[i] = self.gaussian(self.x[i], self.pose_robot[0], self.sigma_movimento)
                 self.ax.clear()
+                self.ax.set_xlim([-2, 2])
                 self.ax.set_ylim([0, 4])
                 self.ax.plot(self.x, self.y, color="b") 
                 plt.pause(0.1)
@@ -185,8 +216,8 @@ class R2D2(Node):
 
             self.sigma_movimento = self.sigma_movimento + 0.002 # se movimento reto, aumenta a incerteza da posição em 0.002
 
-            self.get_logger().info('Valores dos lasers: ' + 'E: ' + str(self.distancia_esquerda) + 'D: ' + str(self.distancia_direita))
-            if self.distancia_esquerda > 1.6 and self.distancia_direita > 1.6 and self.distancia_frente > 1.5 and self.porta < 2 and self.imStillInDoor == False: # se a leitura indicar em frente a uma porta
+            self.get_logger().info('Valores dos lasers: ' + 'E: ' + str(self.distancia_esquerda) + 'D: ' + str(self.distancia_direita) + 'F: ' + str(self.distancia_frente))
+            if self.distancia_esquerda > 0.6 and self.distancia_direita > 0.6 and self.distancia_frente > 0.3 and self.porta < 2 and self.imStillInDoor == False: # se a leitura indicar em frente a uma porta
                 self.get_logger().info ('Achei uma porta!.')
                 self.pub_cmd_vel.publish(self.parar)
 
@@ -213,7 +244,7 @@ class R2D2(Node):
 
                 self.imStillInDoor = True
 
-            if self.distancia_esquerda < 1.6 and self.distancia_direita < 1.6: self.imStillInDoor = False
+            if self.distancia_esquerda < 0.5 and self.distancia_direita < 0.5: self.imStillInDoor = False
                 
 
 
@@ -223,7 +254,7 @@ class R2D2(Node):
 
 
             self.get_logger().debug ("Distância para o obstáculo" + str(self.distancia_frente))
-            if(self.distancia_frente < 1.5):
+            if(self.distancia_frente < 0.3):
                 self.get_logger().info ('Obstáculo detectado.')
                 break
 
@@ -267,6 +298,7 @@ class R2D2(Node):
 
 # Função principal
 def main(args=None):
+    # time.sleep(3)
     rclpy.init(args=args)
     node = R2D2()
     try:

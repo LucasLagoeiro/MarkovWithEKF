@@ -41,7 +41,8 @@ setup(
             'no_simples = pacote_de_exemplos.no_simples:main',
             'no_com_classe = pacote_de_exemplos.no_com_classe:main',
             'checkpoints = pacote_de_exemplos.checkpoints:main',
-            'r2d2 = pacote_de_exemplos.r2d2:main'
+            'r2d2 = pacote_de_exemplos.r2d2:main',
+            'lasers = pacote_de_exemplos.lasers:main'
         ],
     },
 )
