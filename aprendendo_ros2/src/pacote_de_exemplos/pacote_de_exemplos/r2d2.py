@@ -65,10 +65,6 @@ class R2D2(Node):
         self.laser = None
         self.create_subscription(LaserScan, '/scan', self.listener_callback_laser, qos_profile)
 
-        self.get_logger().debug ('Definindo o subscriber do laser: "/joint_states"')
-        self.right_yaw = None
-        self.left_yaw = None
-        self.create_subscription(JointState, '/joint_states', self.listener_callback_jointState, qos_profile)
 
         self.get_logger().debug ('Definindo o subscriber do laser: "/odom"')
         self.pose = None
@@ -81,7 +77,20 @@ class R2D2(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        # self.timer = self.create_timer(0.1, self.listener_callback_jointState)
+        self.declare_parameter('inSimulation', True)
+        inSimulation = self.get_parameter('inSimulation').get_parameter_value().bool_value
+        
+        if inSimulation: 
+            self.get_logger().info ("Im on simulation")
+            self.timer = self.create_timer(0.1, self.on_timer)
+
+        else:
+            self.get_logger().info ("Im on real robot")
+            self.get_logger().debug ('Definindo o subscriber do laser: "/joint_states"')
+            self.right_yaw = None
+            self.left_yaw = None
+            self.create_subscription(JointState, '/joint_states', self.listener_callback_jointState, qos_profile)
+
 
     def listener_callback_laser(self, msg):
         if min(msg.ranges[50:70]) is not None or min(msg.ranges[ 0:10]) is not None or min(msg.ranges[170:190]) is not None:
